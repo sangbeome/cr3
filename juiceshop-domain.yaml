@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Add custom domain to OWASP Juice Shop'
+
+Parameters:
+  StackName:
+    Type: String
+    Default: juiceshop-ecs
+    Description: Name of the existing ECS stack
+  
+  DomainName:
+    Type: String
+    Default: juiceshop.demo.local
+    Description: Custom domain name
+  
+  HostedZoneId:
+    Type: String
+    Default: Z06925882BYPOI2JZPJN7
+    Description: Route 53 Hosted Zone ID
+
+Resources:
+  # SSL Certificate
+  SSLCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+
+  # Route 53 Record
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: 
+          Fn::ImportValue: !Sub "${StackName}-LoadBalancerDNS"
+        HostedZoneId: Z14GRHDCWA56QT  # ALB hosted zone for ap-northeast-2
+        EvaluateTargetHealth: false
+
+  # HTTPS Listener (추가)
+  HTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn:
+        Fn::ImportValue: !Sub "${StackName}-LoadBalancerArn"
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref SSLCertificate
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn:
+            Fn::ImportValue: !Sub "${StackName}-TargetGroupArn"
+
+Outputs:
+  CustomDomainURL:
+    Description: Custom domain URL for Juice Shop
+    Value: !Sub 'https://${DomainName}'
+  
+  CertificateArn:
+    Description: SSL Certificate ARN
+    Value: !Ref SSLCertificate
